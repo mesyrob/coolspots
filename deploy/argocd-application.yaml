@@ -1,0 +1,28 @@
+# Drop this into your homelab-k8s repo as:
+#   apps/workloads/coolspots.yaml
+# Then commit & push — ArgoCD will sync the deploy/ kustomization.
+#
+# NOTE: adjust `repoURL` to wherever you push the coolspots project to.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: coolspots
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/mesyrob/coolspots
+    targetRevision: HEAD
+    path: deploy
+    kustomize:
+      # Required: the kustomization references ../index.html etc. outside its own dir.
+      buildOptions: --load-restrictor=LoadRestrictionsNone
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: coolspots
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

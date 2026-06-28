@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coolspots
+  namespace: coolspots
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # SQLite-backed; do not run two pods simultaneously
+  selector:
+    matchLabels:
+      app: coolspots
+  template:
+    metadata:
+      labels:
+        app: coolspots
+    spec:
+      containers:
+        - name: pocketbase
+          image: ghcr.io/muchobien/pocketbase:0.22.20
+          args:
+            - "serve"
+            - "--http=0.0.0.0:8090"
+            - "--dir=/pb/pb_data"
+            - "--publicDir=/pb/pb_public"
+            - "--migrationsDir=/pb/pb_migrations"
+            - "--hooksDir=/pb/pb_hooks"
+            # CORS: list any origin that will call this API. The local-dev
+            # PocketBase default is permissive; in production, lock to your
+            # actual Vercel domain. Edit this list before going live.
+            - "--origins=https://coolspots.vercel.app,http://localhost:8000,http://localhost:7311"
+          ports:
+            - name: http
+              containerPort: 8090
+          volumeMounts:
+            - name: data
+              mountPath: /pb/pb_data
+            - name: public
+              mountPath: /pb/pb_public
+            - name: migrations
+              mountPath: /pb/pb_migrations
+            - name: hooks
+              mountPath: /pb/pb_hooks
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: coolspots-data
+        - name: public
+          configMap:
+            name: coolspots-public
+        - name: migrations
+          configMap:
+            name: coolspots-migrations
+        - name: hooks
+          configMap:
+            name: coolspots-hooks

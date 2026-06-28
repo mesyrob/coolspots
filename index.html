@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>CoolSpots — find air-conditioned places nearby</title>
+  <meta name="description" content="Crowdsourced map of air-conditioned cafés, libraries, and public spaces — stay cool this summer." />
+  <meta name="theme-color" content="#3B82F6" />
+  <!--
+    Backend URL. Empty = same-origin (homelab / local dev). Set to your public
+    PocketBase URL (e.g. "https://coolspots.<tailnet>.ts.net") when frontend
+    is hosted separately (Vercel) and backend is self-hosted via Tailscale Funnel.
+  -->
+  <meta name="api-base" content="" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9D%84%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="./">
+        <span class="brand-mark" aria-hidden="true">❄</span>
+        <span class="brand-text">CoolSpots</span>
+      </a>
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="location-input" class="search-input" type="search" placeholder="Search city or neighborhood" value="Leuven" autocomplete="off" />
+      </div>
+      <div class="topbar-actions">
+        <button class="btn-ghost" id="locate-me" title="Use my location" aria-label="Use my location">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        </button>
+        <button class="btn-primary" id="open-add-modal-top">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+          <span>Add spot</span>
+        </button>
+      </div>
+    </div>
+    <div class="filter-row">
+      <div class="filter-pills" id="filter-pills">
+        <button class="pill active" data-cat="all">All <span class="pill-count" id="count-all"></span></button>
+        <button class="pill" data-cat="cafe">☕ Cafés</button>
+        <button class="pill" data-cat="library">📚 Libraries</button>
+        <button class="pill" data-cat="shopping">🛍️ Shopping</button>
+        <button class="pill" data-cat="coworking">💻 Coworking</button>
+        <button class="pill" data-cat="public">🏛️ Public</button>
+        <button class="pill" data-cat="restaurant">🍽️ Food</button>
+      </div>
+      <div class="sort-wrap">
+        <select class="sort-select" id="sort-select" aria-label="Sort">
+          <option value="nearest">Nearest</option>
+          <option value="loved">Most loved</option>
+          <option value="coolest">Coolest</option>
+          <option value="confirmed">Most confirmed</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-split">
+    <section class="list-panel" id="list-panel" aria-label="List of cool spots">
+      <div class="list-meta">
+        <span id="list-count">0 spots</span>
+        <span class="dot">·</span>
+        <span id="list-area-label">in this area</span>
+      </div>
+      <div class="list" id="list"></div>
+      <div class="list-empty" id="list-empty" hidden>
+        <div class="empty-emoji">🥵</div>
+        <h3>No cool spots in view</h3>
+        <p>Pan the map or zoom out to find more AC.</p>
+      </div>
+    </section>
+    <section class="map-panel" aria-label="Map of cool spots">
+      <div id="map" class="map"></div>
+      <button class="map-search-here" id="map-search-here" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 21l-4.35-4.35"/><circle cx="11" cy="11" r="7"/></svg>
+        Search this area
+      </button>
+    </section>
+  </main>
+
+  <!-- Mobile bottom nav -->
+  <nav class="mobile-nav" aria-label="Mobile navigation">
+    <button class="mnav active" data-view="explore">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <span>Explore</span>
+    </button>
+    <button class="mnav" data-view="map">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21 3 6"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+      <span>Map</span>
+    </button>
+    <button class="mnav" data-view="favorites">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      <span>Favorites</span>
+    </button>
+    <button class="mnav" data-view="add">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      <span>Add</span>
+    </button>
+  </nav>
+
+  <!-- Floating list/map toggle (mobile) -->
+  <button class="fab-toggle" id="fab-toggle" aria-label="Toggle map">
+    <svg id="fab-icon-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21 3 6"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+    <svg id="fab-icon-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" hidden><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>
+    <span id="fab-label">Map</span>
+  </button>
+
+  <!-- Detail slide-in -->
+  <aside class="detail" id="detail" aria-hidden="true">
+    <div class="detail-inner" id="detail-inner"></div>
+  </aside>
+
+  <!-- Add Spot modal -->
+  <div class="modal" id="add-modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="add-title">
+      <div class="modal-head">
+        <h2 id="add-title">Add a cool spot</h2>
+        <button class="icon-btn" data-close aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <form id="add-form" class="modal-body">
+        <div class="field">
+          <label>Pick a location <span class="muted">— click the map or type an address</span></label>
+          <div id="add-map" class="mini-map"></div>
+          <div class="address-row">
+            <input id="add-address" class="input" type="text" placeholder="e.g. Bondgenotenlaan 1, Leuven" />
+            <button type="button" class="btn-ghost" id="geocode-btn">Find</button>
+          </div>
+          <div class="coord-hint" id="coord-hint">No pin placed yet</div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="add-name">Name</label>
+            <input id="add-name" class="input" required placeholder="e.g. Café Mont Blanc" />
+          </div>
+          <div class="field">
+            <label for="add-category">Category</label>
+            <select id="add-category" class="input" required>
+              <option value="cafe">☕ Café</option>
+              <option value="library">📚 Library</option>
+              <option value="shopping">🛍️ Shopping</option>
+              <option value="coworking">💻 Coworking</option>
+              <option value="public">🏛️ Public building</option>
+              <option value="restaurant">🍽️ Food</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>How strong is the AC?</label>
+          <div class="ac-picker" role="radiogroup" aria-label="AC level">
+            <label class="ac-opt"><input type="radio" name="ac" value="strong" checked /><span>❄️ Strong</span></label>
+            <label class="ac-opt"><input type="radio" name="ac" value="weak" /><span>🌬️ Weak</span></label>
+            <label class="ac-opt"><input type="radio" name="ac" value="none" /><span>🥵 None</span></label>
+          </div>
+        </div>
+        <div class="field">
+          <label for="add-nick">Your nickname</label>
+          <input id="add-nick" class="input" placeholder="Anonymous Penguin" />
+        </div>
+        <div class="field">
+          <label>Amenities</label>
+          <div class="checks">
+            <label class="check"><input type="checkbox" value="wifi" /> Wi-Fi</label>
+            <label class="check"><input type="checkbox" value="seats" /> Seats</label>
+            <label class="check"><input type="checkbox" value="power" /> Power outlets</label>
+            <label class="check"><input type="checkbox" value="quiet" /> Quiet</label>
+            <label class="check"><input type="checkbox" value="accessible" /> Wheelchair access</label>
+            <label class="check"><input type="checkbox" value="food" /> Food & drinks</label>
+          </div>
+        </div>
+        <div class="field">
+          <label for="add-desc">Short description</label>
+          <textarea id="add-desc" class="input" rows="2" maxlength="140" placeholder="Why is it cool? (literally)"></textarea>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn-ghost" data-close>Cancel</button>
+          <button type="submit" class="btn-primary">Save spot</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="seed.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

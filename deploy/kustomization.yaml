@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: coolspots
+
+resources:
+  - namespace.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - funnel.yaml  # remove if you're not using Tailscale Funnel for public access
+
+# Frontend static files are mounted as a ConfigMap and served by PocketBase from /pb/pb_public.
+# References paths outside this dir, so ArgoCD needs:
+#   spec.source.kustomize.buildOptions: --load-restrictor=LoadRestrictionsNone
+configMapGenerator:
+  - name: coolspots-public
+    files:
+      - ../index.html
+      - ../app.js
+      - ../styles.css
+      - ../manifest.json
+      - ../seed.js
+  - name: coolspots-migrations
+    files:
+      - pb_migrations/1700000001_init_spots.js
+      - pb_migrations/1700000002_seed_osm.js
+      - pb_migrations/1700000003_favorites.js
+      - pb_migrations/1700000004_likes_count.js
+  - name: coolspots-hooks
+    files:
+      - pb_hooks/likes_count.pb.js
+
+# Don't append content hashes — the Deployment references the names as-is and we redeploy on change.
+generatorOptions:
+  disableNameSuffixHash: true
