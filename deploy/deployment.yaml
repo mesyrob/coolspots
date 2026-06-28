@@ -18,29 +18,25 @@ spec:
       containers:
         - name: pocketbase
           image: ghcr.io/muchobien/pocketbase:0.22.20
+          # The muchobien image's ENTRYPOINT already runs `pocketbase serve` with
+          # default --dir=/pb_data, --publicDir=/pb_public, etc. Don't re-pass
+          # those. Only supply additional flags here (and override with caution).
           args:
-            - "serve"
-            - "--http=0.0.0.0:8090"
-            - "--dir=/pb/pb_data"
-            - "--publicDir=/pb/pb_public"
-            - "--migrationsDir=/pb/pb_migrations"
-            - "--hooksDir=/pb/pb_hooks"
-            # CORS: list any origin that will call this API. The local-dev
-            # PocketBase default is permissive; in production, lock to your
-            # actual Vercel domain. Edit this list before going live.
+            - "--migrationsDir=/pb_migrations"
+            # CORS allowlist — edit to match your real frontend origins.
             - "--origins=https://coolspots.vercel.app,http://localhost:8000,http://localhost:7311"
           ports:
             - name: http
               containerPort: 8090
           volumeMounts:
             - name: data
-              mountPath: /pb/pb_data
+              mountPath: /pb_data
             - name: public
-              mountPath: /pb/pb_public
+              mountPath: /pb_public
             - name: migrations
-              mountPath: /pb/pb_migrations
+              mountPath: /pb_migrations
             - name: hooks
-              mountPath: /pb/pb_hooks
+              mountPath: /pb_hooks
           readinessProbe:
             httpGet:
               path: /api/health
